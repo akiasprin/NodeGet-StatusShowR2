@@ -7,7 +7,7 @@ export function ThemeToggle() {
   const dark = theme === 'dark'
   return (
     <Button
-      variant="outline"
+      variant="ghost"
       size="icon"
       onClick={toggle}
       aria-label={dark ? '切换到浅色' : '切换到深色'}

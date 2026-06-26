@@ -5,7 +5,7 @@ import { httpRpcCall } from '../api/client'
 import { isOnline } from '../utils/status'
 import type { DynamicSummary, HistorySample, Node, NodeMeta, SiteConfig, StaticData } from '../types'
 
-type Agent = Pick<Node, 'uuid' | 'source' | 'meta' | 'static'>
+type Agent = Pick<Node, 'uuid' | 'source' | 'meta' | 'static' | 'trafficBaseline'>
 
 interface BackendError {
   source: string
@@ -50,9 +50,13 @@ const META_KEYS = [
   'metadata_price_unit',
   'metadata_price_cycle',
   'metadata_expire_time',
+  'metadata_traffic_limit_gb',
+  'metadata_traffic_price_per_gb',
+  'metadata_traffic_period',
+  'metadata_traffic_start_date',
 ]
 const DYN_INTERVAL_MS = 2000
-const HISTORY_LIMIT = 60
+const HISTORY_LIMIT = 300
 
 function emptyMeta(): NodeMeta {
   return {
@@ -68,6 +72,10 @@ function emptyMeta(): NodeMeta {
     priceUnit: '$',
     priceCycle: 30,
     expireTime: '',
+    trafficLimitGb: 0,
+    trafficPricePerGb: 0,
+    trafficPeriod: '1m',
+    trafficStartDate: '',
   }
 }
 
@@ -94,6 +102,27 @@ function parseMeta(raw: Record<string, unknown>): NodeMeta {
     priceUnit: raw.metadata_price_unit ? String(raw.metadata_price_unit) : '$',
     priceCycle: Number.isFinite(cycle) && cycle > 0 ? cycle : 30,
     expireTime: raw.metadata_expire_time ? String(raw.metadata_expire_time) : '',
+    trafficLimitGb: Number(raw.metadata_traffic_limit_gb) || 0,
+    trafficPricePerGb: Number(raw.metadata_traffic_price_per_gb) || 0,
+    trafficPeriod: raw.metadata_traffic_period ? String(raw.metadata_traffic_period) : '1m',
+    trafficStartDate: raw.metadata_traffic_start_date ? String(raw.metadata_traffic_start_date) : '',
+  }
+}
+
+function parseTrafficBaseline(raw: Record<string, unknown>): Node['trafficBaseline'] {
+  const v = raw.traffic_baseline
+  if (!v || typeof v !== 'object') return undefined
+  const o = v as Record<string, unknown>
+  const rx = Number(o.rx)
+  const tx = Number(o.tx)
+  const adjustRx = Number(o.adjust_rx)
+  const adjustTx = Number(o.adjust_tx)
+  if (!Number.isFinite(rx) || !Number.isFinite(tx)) return undefined
+  return {
+    rx,
+    tx,
+    adjustRx: Number.isFinite(adjustRx) ? adjustRx : 0,
+    adjustTx: Number.isFinite(adjustTx) ? adjustTx : 0,
   }
 }
 
@@ -127,6 +156,7 @@ export function useNodes(config: SiteConfig | null) {
       setLoading(false)
       return
     }
+    setLoading(true)
     const pool = new BackendPool(config.site_tokens)
     setPool(pool)
     const sourceUuids = new Map<string, string[]>()
@@ -164,7 +194,8 @@ export function useNodes(config: SiteConfig | null) {
 
           const { url, token, name } = entry.client
           const kvItems = uuids.flatMap(u => META_KEYS.map(k => ({ namespace: u, key: k })))
-          const [meta, stat, dyn] = await Promise.allSettled([
+          const baselineItems = uuids.map(u => ({ namespace: u, key: 'traffic_baseline' }))
+          const [meta, stat, dyn, baseline] = await Promise.allSettled([
             httpRpcCall<{ namespace: string; key: string; value: unknown }[]>(
               url, token, 'kv_get_multi_value', { namespace_key: kvItems },
             ),
@@ -174,7 +205,17 @@ export function useNodes(config: SiteConfig | null) {
             httpRpcCall<DynamicSummary[]>(
               url, token, 'agent_dynamic_summary_multi_last_query', { uuids, fields: DYNAMIC_FIELDS },
             ),
+            httpRpcCall<{ namespace: string; key: string; value: unknown }[]>(
+              url, token, 'kv_get_multi_value', { namespace_key: baselineItems },
+            ),
           ])
+
+          const batchErrors: BackendError[] = []
+          if (meta.status === 'rejected') batchErrors.push({ source: `${name}/kv`, error: meta.reason })
+          if (stat.status === 'rejected') batchErrors.push({ source: `${name}/static`, error: stat.reason })
+          if (dyn.status === 'rejected') batchErrors.push({ source: `${name}/dynamic`, error: dyn.reason })
+          if (baseline.status === 'rejected') batchErrors.push({ source: `${name}/kv-baseline`, error: baseline.reason })
+          if (batchErrors.length) setErrors(prev => [...prev, ...batchErrors])
 
           setAgents(prev => {
             const next = new Map(prev)
@@ -189,7 +230,20 @@ export function useNodes(config: SiteConfig | null) {
               }
               for (const uuid of uuids) {
                 const cur = next.get(uuid) ?? blankAgent(uuid, name)
-                next.set(uuid, { ...cur, meta: parseMeta(grouped.get(uuid) ?? {}) })
+                const raw = grouped.get(uuid) ?? {}
+                next.set(uuid, { ...cur, meta: parseMeta(raw) })
+              }
+            }
+
+            if (baseline.status === 'fulfilled' && baseline.value) {
+              const grouped = new Map<string, Record<string, unknown>>()
+              for (const row of baseline.value) {
+                if (!row || row.value == null) continue
+                grouped.set(row.namespace, { traffic_baseline: row.value })
+              }
+              for (const uuid of uuids) {
+                const cur = next.get(uuid) ?? blankAgent(uuid, name)
+                next.set(uuid, { ...cur, trafficBaseline: parseTrafficBaseline(grouped.get(uuid) ?? {}) })
               }
             }
 
@@ -224,6 +278,40 @@ export function useNodes(config: SiteConfig | null) {
       )
 
       setLoading(false)
+
+      // 后台静默回填历史数据
+      const histFrom = Date.now() - 60_000
+      const histTo = Date.now()
+      pool.entries.forEach(async entry => {
+        const uuids = sourceUuids.get(entry.name) || []
+        const { url, token } = entry.client
+        await Promise.allSettled(
+          uuids.map(async uuid => {
+            try {
+              const rows = await httpRpcCall<DynamicSummary[]>(
+                url, token, 'agent_query_dynamic_summary', {
+                  query: {
+                    fields: DYNAMIC_FIELDS,
+                    condition: [{ uuid }, { timestamp_from_to: [histFrom, histTo] }],
+                  },
+                },
+              )
+              if (!rows?.length) return
+              setHistory(prev => {
+                const next = new Map(prev)
+                let arr = next.get(uuid) || []
+                for (const row of rows) {
+                  const s = sampleFrom(row)
+                  if (!arr.length || arr[arr.length - 1].t !== s.t) arr.push(s)
+                }
+                arr.sort((a, b) => a.t - b.t)
+                next.set(uuid, arr.slice(-HISTORY_LIMIT))
+                return next
+              })
+            } catch {}
+          }),
+        )
+      })
     }
 
     const tickDynamic = async () => {

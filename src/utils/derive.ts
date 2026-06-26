@@ -38,11 +38,21 @@ export function cpuLabel(node: Node) {
 export function osLabel(node: Node) {
   const s = node.static?.system
   if (!s) return ''
-  if (s.system_os_long_version) return s.system_os_long_version
-  return [s.system_name, s.system_os_version || s.system_version].filter(Boolean).join(' ')
+  if (s.system_os_long_version) return s.system_os_long_version.replace(/^Linux /i, '').replace(/\(([^)]*)\)/g, '$1').trim()
+  return [s.system_name?.replace(/^Linux$/i, '').trim(), s.system_os_version || s.system_version].filter(Boolean).join(' ')
 }
 
 const LOGO_BASE = `${import.meta.env.BASE_URL}linux-logo-icon/`
+const VENDOR_BASE = `${import.meta.env.BASE_URL}vendor-logo-icon/`
+
+const VENDORS = [
+  { file: 'dmit.svg', match: ['dmit'] },
+  { file: 'oracle.svg', match: ['oracle'] },
+  { file: 'terabix.svg', match: ['terabix'] },
+  { file: 'greencloud.svg', match: ['green'] },
+  { file: 'akile.svg', match: ['akile'] },
+  { file: 'locvps.svg', match: ['locvps'] },
+]
 
 const DISTROS = [
   { file: 'archlinux.svg', match: ['arch'] },
@@ -76,6 +86,27 @@ export function distroLogo(node: Node) {
     if (match.some(k => hay.includes(k))) return `${LOGO_BASE}${file}`
   }
   return `${LOGO_BASE}linux.svg`
+}
+
+export function vendorLogo(node: Node) {
+  const name = (node.meta?.name || '').toLowerCase().trim()
+  if (!name) return ''
+  for (const { file, match } of VENDORS) {
+    if (match.some(k => name.includes(k))) return `${VENDOR_BASE}${file}`
+  }
+  return ''
+}
+
+const LETTER_COLORS = ['#e63946','#f4a261','#e9c46a','#2a9d8f','#287271','#6d597a','#b5838d','#1d3557']
+
+export function letterIcon(node: Node): string {
+  const name = displayName(node)
+  const letter = name.trim().charAt(0).toUpperCase() || '?'
+  let hash = 0
+  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) >>> 0
+  const color = LETTER_COLORS[hash % LETTER_COLORS.length]
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="${color}"/><text x="32" y="46" text-anchor="middle" font-family="system-ui,sans-serif" font-weight="700" font-size="38" fill="#fff">${letter}</text></svg>`
+  return `data:image/svg+xml,${encodeURIComponent(svg)}`
 }
 
 const VIRT_LABELS: Record<string, string> = {

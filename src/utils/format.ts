@@ -13,9 +13,9 @@ export function uptime(seconds?: number | null) {
   if (!seconds || seconds <= 0) return '—'
   const d = Math.floor(seconds / 86400)
   const h = Math.floor((seconds % 86400) / 3600)
-  if (d > 0) return `${d}天 ${h}小时`
+  if (d > 0) return `${d}d ${h}h`
   const m = Math.floor((seconds % 3600) / 60)
-  return `${h}小时 ${m}分`
+  return `${h}h ${m}m`
 }
 
 export function relativeAge(ts?: number | null, now = Date.now()) {

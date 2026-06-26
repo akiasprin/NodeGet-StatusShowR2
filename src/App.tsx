@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useMemo, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useState } from 'react'
 import { AlertTriangle, Loader2 } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from './components/ui/alert'
 import { useConfig } from './hooks/useConfig'
@@ -8,7 +8,7 @@ import { Navbar } from './components/Navbar'
 import { Footer } from './components/Footer'
 import { NodeCard } from './components/NodeCard'
 import { NodeTable } from './components/NodeTable'
-import { NodeDetail } from './components/NodeDetail'
+import { InlineNodeDetail } from './components/InlineNodeDetail'
 import { TagFilter } from './components/TagFilter'
 import { RegionFilter } from './components/RegionFilter'
 
@@ -16,7 +16,8 @@ const WorldMap = lazy(() =>
   import('./components/WorldMap').then(m => ({ default: m.WorldMap })),
 )
 import { deriveUsage, displayName } from './utils/derive'
-import type { Sort, View } from './types'
+import type { BackendPool } from './api/pool'
+import type { Node, Sort, View } from './types'
 
 const DEFAULT_LOGO = `${import.meta.env.BASE_URL}logo.png`
 const VIEW_KEY = 'nodeget.view'
@@ -40,14 +41,51 @@ const num = (v?: number) => (Number.isFinite(v) ? (v as number) : -Infinity)
 
 export function App() {
   const { config, error: configError } = useConfig()
-  const { nodes, errors, pool } = useNodes(config)
+  const { nodes, errors, loading, pool } = useNodes(config)
 
   const [view, setView] = useState<View>(initialView)
   const [sort, setSort] = useState<Sort>(initialSort)
   const [query, setQuery] = useState('')
   const [activeTag, setActiveTag] = useState<string | null>(null)
   const [activeRegion, setActiveRegion] = useState<string | null>(null)
-  const [selected, setSelected] = useState<string | null>(readHash)
+  const [expandedSet, setExpandedSet] = useState<Set<string>>(() => {
+    const hash = readHash()
+    return new Set(hash ? [hash] : [])
+  })
+
+  const toggleExpand = useCallback((uuid: string) => {
+    setExpandedSet(prev => {
+      if (prev.has(uuid)) {
+        const next = new Set(prev)
+        next.delete(uuid)
+        return next
+      }
+      return new Set([uuid])
+    })
+  }, [])
+
+  const closeExpand = useCallback((uuid: string) => {
+    setExpandedSet(prev => {
+      const next = new Set(prev)
+      next.delete(uuid)
+      return next
+    })
+  }, [])
+  const [gridCols, setGridCols] = useState(4)
+
+  const updateGridCols = useCallback(() => {
+    const w = window.innerWidth
+    if (w >= 1280) setGridCols(4)
+    else if (w >= 1024) setGridCols(3)
+    else if (w >= 640) setGridCols(2)
+    else setGridCols(1)
+  }, [])
+
+  useEffect(() => {
+    updateGridCols()
+    window.addEventListener('resize', updateGridCols)
+    return () => window.removeEventListener('resize', updateGridCols)
+  }, [updateGridCols])
 
   useEffect(() => {
     localStorage.setItem(VIEW_KEY, view)
@@ -58,20 +96,24 @@ export function App() {
   }, [sort])
 
   useEffect(() => {
-    const onHash = () => setSelected(readHash())
+    const onHash = () => {
+      const hash = readHash()
+      if (hash) setExpandedSet(prev => new Set(prev).add(hash))
+    }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
   }, [])
 
   useEffect(() => {
-    const target = selected ? `#${encodeURIComponent(selected)}` : ''
+    const arr = [...expandedSet]
+    const target = arr.length > 0 ? `#${encodeURIComponent(arr[0])}` : ''
     if (window.location.hash === target) return
-    if (selected) {
-      window.location.hash = encodeURIComponent(selected)
+    if (arr.length > 0) {
+      history.replaceState(null, '', `#${encodeURIComponent(arr[0])}`)
     } else {
       history.replaceState(null, '', window.location.pathname + window.location.search)
     }
-  }, [selected])
+  }, [expandedSet])
 
   const allTags = useMemo(() => {
     const set = new Set<string>()
@@ -107,7 +149,7 @@ export function App() {
   }, [regions, activeRegion])
 
   const list = useMemo(() => {
-    let arr = [...nodes.values()].filter(n => !n.meta?.hidden)
+    let arr = [...nodes.values()].filter(n => !n.meta?.hidden && n.meta?.name)
     if (activeTag) arr = arr.filter(n => n.meta?.tags?.includes(activeTag))
     if (activeRegion) {
       arr = arr.filter(n => n.meta?.region?.trim().toUpperCase() === activeRegion)
@@ -158,8 +200,6 @@ export function App() {
     })
   }, [nodes, query, activeTag, activeRegion, sort, regions])
 
-  const selectedNode = selected ? nodes.get(selected) || null : null
-
   if (configError) {
     return (
       <div className="min-h-screen flex items-center justify-center p-8">
@@ -196,6 +236,7 @@ export function App() {
         onView={setView}
         sort={sort}
         onSort={setSort}
+        defaultColor={config.user_preferences.color_theme}
       />
 
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-6 sm:py-8 space-y-6">
@@ -209,25 +250,39 @@ export function App() {
         )}
         {!empty && <TagFilter tags={allTags} active={activeTag} onChange={setActiveTag} />}
 
-        {empty && !hasErrors && (
+        {empty && loading && !hasErrors && (
           <div className="py-24 flex flex-col items-center gap-3 text-muted-foreground">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
             <span className="text-sm">连接后端中…</span>
           </div>
         )}
 
-        {empty && hasErrors && (
+        {empty && !loading && !hasErrors && (
           <div className="py-20 text-center text-muted-foreground">暂无节点</div>
         )}
 
         {!empty && view === 'cards' && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-            {list.map(n => (
-              <NodeCard key={n.uuid} node={n} />
-            ))}
-          </div>
+          <ExpandCard
+            list={list}
+            expandedSet={expandedSet}
+            gridCols={gridCols}
+            nodes={nodes}
+            onToggle={toggleExpand}
+            onClose={closeExpand}
+            pool={pool!}
+            showSource={(config.site_tokens?.length ?? 0) > 1}
+          />
         )}
-        {!empty && view === 'table' && <NodeTable nodes={list} onOpen={setSelected} />}
+        {!empty && view === 'table' && (
+          <NodeTable
+            nodes={list}
+            expandedSet={expandedSet}
+            onToggle={toggleExpand}
+            onClose={closeExpand}
+            pool={pool}
+            showSource={(config.site_tokens?.length ?? 0) > 1}
+          />
+        )}
         {!empty && view === 'map' && (
           <Suspense
             fallback={
@@ -236,7 +291,7 @@ export function App() {
               </div>
             }
           >
-            <WorldMap nodes={list} onOpen={setSelected} />
+            <WorldMap nodes={list} onOpen={toggleExpand} />
           </Suspense>
         )}
 
@@ -259,13 +314,63 @@ export function App() {
       </main>
 
       <Footer text={config.user_preferences.footer} repo={config.repository} dist_page={config.dist_page}/>
+    </div>
+  )
+}
 
-      <NodeDetail
-        node={selectedNode}
-        onClose={() => setSelected(null)}
-        showSource={(config.site_tokens?.length ?? 0) > 1}
-        pool={pool}
-      />
+function ExpandCard({
+  list,
+  expandedSet,
+  gridCols,
+  nodes,
+  onToggle,
+  onClose,
+  pool,
+  showSource,
+}: {
+  list: Node[]
+  expandedSet: Set<string>
+  gridCols: number
+  nodes: Map<string, Node>
+  onToggle: (uuid: string) => void
+  onClose: (uuid: string) => void
+  pool: BackendPool
+  showSource: boolean
+}) {
+  // 计算每个展开节点所在行的最后一个位置（去重：同行只插一个详情）
+  const detailSlots = new Map<number, string>() // lastInRow -> uuid
+  for (const uuid of expandedSet) {
+    const idx = list.findIndex(n => n.uuid === uuid)
+    if (idx < 0) continue
+    const row = Math.floor(idx / gridCols)
+    const last = Math.min((row + 1) * gridCols - 1, list.length - 1)
+    detailSlots.set(last, uuid)
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {list.map((n, i) => {
+        const isExpanded = expandedSet.has(n.uuid)
+        const detailUuid = detailSlots.get(i)
+        const detailNode = detailUuid ? nodes.get(detailUuid) ?? null : null
+        return (
+          <div key={n.uuid} className="contents">
+            <NodeCard
+              node={n}
+              isExpanded={isExpanded}
+              onClick={() => onToggle(n.uuid)}
+            />
+            {detailNode && (
+              <InlineNodeDetail
+                node={detailNode}
+                onClose={() => onClose(detailUuid!)}
+                showSource={showSource}
+                pool={pool}
+              />
+            )}
+          </div>
+        )
+      })}
     </div>
   )
 }

@@ -44,16 +44,14 @@ export function SortMenu({ value, onChange }: { value: Sort; onChange: (v: Sort)
   return (
     <div ref={ref} className="relative">
       <Button
-        variant="outline"
-        size="sm"
+        variant="ghost"
+        size="icon"
         onClick={() => setOpen(o => !o)}
         aria-haspopup="menu"
         aria-expanded={open}
-        className="gap-1.5"
       >
         <ArrowUpDown className="h-3.5 w-3.5" />
-        <span className="hidden sm:inline">{current.label}</span>
-      </Button>
+</Button>
       {show && (
         <div
           data-state={open ? 'open' : 'closed'}

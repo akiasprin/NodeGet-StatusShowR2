@@ -11,6 +11,10 @@ export interface NodeMeta {
   priceUnit: string
   priceCycle: number
   expireTime: string
+  trafficLimitGb: number
+  trafficPricePerGb: number
+  trafficPeriod: string
+  trafficStartDate: string
 }
 
 export interface StaticSystem {
@@ -78,6 +82,13 @@ export interface HistorySample {
   netOut: number
 }
 
+export interface TrafficBaseline {
+  rx: number
+  tx: number
+  adjustRx: number
+  adjustTx: number
+}
+
 export interface Node {
   uuid: string
   source: string
@@ -86,6 +97,7 @@ export interface Node {
   static: StaticData
   dynamic: DynamicSummary | null
   history: HistorySample[]
+  trafficBaseline?: TrafficBaseline
 }
 
 export interface ThemeConfig {
@@ -107,6 +119,7 @@ export interface UserConfig {
     site_name?: string
     site_logo?: string
     footer?: string
+    color_theme?: string
   },
   site_tokens: { 
     name: string; 

@@ -3,7 +3,7 @@ import { taskQuery } from '../api/methods'
 import type { BackendPool } from '../api/pool'
 import type { TaskQueryResult } from '../types'
 
-const WINDOW_MS = 60 * 60 * 1000
+const WINDOW_MS = 24 * 60 * 60 * 1000
 const REFRESH_MS = 10_000
 const QUERY_TIMEOUT_MS = 20_000
 

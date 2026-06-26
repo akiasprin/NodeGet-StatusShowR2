@@ -3,6 +3,7 @@ import { Search as SearchIcon, X } from 'lucide-react'
 import { Search } from './Search'
 import { ViewToggle } from './ViewToggle'
 import { ThemeToggle } from './ThemeToggle'
+import { ColorThemeToggle } from './ColorThemeToggle'
 import { SortMenu } from './SortMenu'
 import { Button } from './ui/button'
 import type { Sort, View } from '../types'
@@ -16,9 +17,10 @@ interface Props {
   onView: (v: View) => void
   sort: Sort
   onSort: (v: Sort) => void
+  defaultColor?: string
 }
 
-export function Navbar({ siteName, logo, query, onQuery, view, onView, sort, onSort }: Props) {
+export function Navbar({ siteName, logo, query, onQuery, view, onView, sort, onSort, defaultColor }: Props) {
   const [searchOpen, setSearchOpen] = useState(false)
   const [stuck, setStuck] = useState(false)
   const inputRef = useRef<HTMLInputElement>(null)
@@ -43,24 +45,24 @@ export function Navbar({ siteName, logo, query, onQuery, view, onView, sort, onS
       ref={headerRef}
       className={`sticky top-0 z-10 transition-[background-color,backdrop-filter,border-color] duration-200 ${
         stuck
-          ? 'border-b border-border/40 backdrop-blur bg-background/70'
+          ? 'border-b border-primary/15 backdrop-blur bg-background/70 shadow-[0_1px_8px_-2px_hsl(var(--primary)/0.12)]'
           : 'border-b border-transparent'
       }`}
     >
-      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 px-4 sm:px-6 py-3">
+      <div className="max-w-7xl mx-auto flex items-center justify-between gap-2 px-3 sm:px-6 py-3">
         <a
           href="./"
-          className="flex items-center gap-2 min-w-0 shrink-0 hover:opacity-80 transition-opacity"
+          className="flex items-center gap-2 min-w-0 hover:opacity-80 transition-opacity"
         >
           {logo && <img src={logo} alt="" className="w-6 h-6 rounded shrink-0" />}
           <span className="font-semibold tracking-wide truncate">{siteName}</span>
         </a>
-        <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2.5">
           <div className="hidden sm:block">
             <Search value={query} onChange={onQuery} />
           </div>
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             className="sm:hidden"
             onClick={() => setSearchOpen(o => !o)}
@@ -70,6 +72,7 @@ export function Navbar({ siteName, logo, query, onQuery, view, onView, sort, onS
           </Button>
           <SortMenu value={sort} onChange={onSort} />
           <ViewToggle value={view} onChange={onView} />
+          <ColorThemeToggle defaultColor={defaultColor} />
           <ThemeToggle />
         </div>
       </div>

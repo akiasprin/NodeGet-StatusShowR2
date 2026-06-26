@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react'
 import { Badge } from './ui/badge'
 import { Card } from './ui/card'
 import { Progress } from './ui/progress'
@@ -7,29 +8,36 @@ import { StatusDot } from './StatusDot'
 import { bytes, pct, relativeAge } from '../utils/format'
 import { deriveUsage, displayName, distroLogo, virtLabel } from '../utils/derive'
 import { cn, loadColor } from '../utils/cn'
+import { InlineNodeDetail } from './InlineNodeDetail'
+import type { BackendPool } from '../api/pool'
 import type { Node } from '../types'
 
 interface Props {
   nodes: Node[]
-  onOpen?: (uuid: string) => void
+  expandedSet: Set<string>
+  onToggle?: (uuid: string) => void
+  onClose?: (uuid: string) => void
+  pool: BackendPool | null
+  showSource: boolean
 }
 
-export function NodeTable({ nodes, onOpen }: Props) {
+export function NodeTable({ nodes, expandedSet, onToggle, onClose, pool, showSource }: Props) {
+  const COL_COUNT = 10
   return (
     <Card className="overflow-hidden">
       <Table>
-        <TableHeader>
+        <TableHeader className="bg-muted/50">
           <TableRow>
             <TableHead className="w-8" />
-            <TableHead>名称</TableHead>
-            <TableHead className="w-12 text-center">地区</TableHead>
-            <TableHead>架构</TableHead>
-            <TableHead>CPU</TableHead>
-            <TableHead>内存</TableHead>
-            <TableHead>磁盘</TableHead>
-            <TableHead>下行</TableHead>
-            <TableHead>上行</TableHead>
-            <TableHead>更新</TableHead>
+            <TableHead className="text-xs">名称</TableHead>
+            <TableHead className="w-12 text-center text-xs">地区</TableHead>
+            <TableHead className="text-xs">架构</TableHead>
+            <TableHead className="text-xs">CPU</TableHead>
+            <TableHead className="text-xs">内存</TableHead>
+            <TableHead className="text-xs">磁盘</TableHead>
+            <TableHead className="text-xs">下行</TableHead>
+            <TableHead className="text-xs">上行</TableHead>
+            <TableHead className="text-xs">更新</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -37,16 +45,22 @@ export function NodeTable({ nodes, onOpen }: Props) {
             const u = deriveUsage(n)
             const logo = distroLogo(n)
             const virt = virtLabel(n)
+            const isSelected = expandedSet.has(n.uuid)
             return (
-              <TableRow
-                key={n.uuid}
-                onClick={() => onOpen?.(n.uuid)}
-                className={cn('cursor-pointer', !n.online && 'opacity-60')}
-              >
-                <TableCell>
+              <>
+                <TableRow
+                  key={n.uuid}
+                  onClick={() => onToggle?.(n.uuid)}
+                  className={cn(
+                    'cursor-pointer',
+                    isSelected && '!bg-primary/10 hover:!bg-primary/10',
+                    !n.online && 'opacity-60',
+                  )}
+                >
+                <TableCell className="text-xs">
                   <StatusDot online={n.online} />
                 </TableCell>
-                <TableCell className="font-medium">
+                <TableCell className="font-medium text-xs">
                   <div className="flex items-center gap-2 min-w-0">
                     {logo && (
                       <img
@@ -59,14 +73,14 @@ export function NodeTable({ nodes, onOpen }: Props) {
                     <span className="truncate">{displayName(n)}</span>
                   </div>
                 </TableCell>
-                <TableCell className="text-center">
+                <TableCell className="text-center text-xs">
                   {n.meta?.region ? (
                     <Flag code={n.meta.region} />
                   ) : (
                     <span className="text-muted-foreground text-sm">—</span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-xs">
                   {virt ? (
                     <Badge variant="outline" className="text-[10px] uppercase tracking-wide">
                       {virt}
@@ -75,27 +89,43 @@ export function NodeTable({ nodes, onOpen }: Props) {
                     <span className="text-muted-foreground">—</span>
                   )}
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-xs">
                   <CellBar value={u.cpu} />
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-xs">
                   <CellBar
                     value={u.mem}
                     hint={u.memTotal ? `${bytes(u.memUsed)} / ${bytes(u.memTotal)}` : null}
                   />
                 </TableCell>
-                <TableCell>
+                <TableCell className="text-xs">
                   <CellBar
                     value={u.disk}
                     hint={u.diskTotal ? `${bytes(u.diskUsed)} / ${bytes(u.diskTotal)}` : null}
                   />
                 </TableCell>
-                <TableCell className="font-mono">{bytes(u.netIn || 0)}/s</TableCell>
-                <TableCell className="font-mono">{bytes(u.netOut || 0)}/s</TableCell>
+                <TableCell className="font-mono text-xs">{bytes(u.netIn || 0)}/s</TableCell>
+                <TableCell className="font-mono text-xs">{bytes(u.netOut || 0)}/s</TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">
                   {relativeAge(u.ts)}
                 </TableCell>
               </TableRow>
+                <ExpandRow
+                  key={`${n.uuid}-detail`}
+                  open={isSelected && !!pool}
+                  colSpan={COL_COUNT}
+                >
+                  {pool && (
+                    <InlineNodeDetail
+                      node={n}
+                      onClose={() => onClose?.(n.uuid)}
+                      showSource={showSource}
+                      pool={pool}
+                      variant="table"
+                    />
+                  )}
+                </ExpandRow>
+              </>
             )
           })}
         </TableBody>
@@ -110,5 +140,41 @@ function CellBar({ value, hint }: { value: number | undefined; hint?: string | n
       <Progress value={value} indicatorClassName={loadColor(value)} className="flex-1 h-1.5" />
       <span className="font-mono text-xs w-12 text-right">{pct(value)}</span>
     </div>
+  )
+}
+
+function ExpandRow({ open, colSpan, children }: { open: boolean; colSpan: number; children: React.ReactNode }) {
+  const [render, setRender] = useState(open)
+  const [animating, setAnimating] = useState(false)
+  const timerRef = useRef<ReturnType<typeof setTimeout>>()
+
+  useEffect(() => {
+    if (open) {
+      setRender(true)
+      requestAnimationFrame(() => setAnimating(true))
+    } else {
+      setAnimating(false)
+      timerRef.current = setTimeout(() => setRender(false), 300)
+    }
+    return () => clearTimeout(timerRef.current)
+  }, [open])
+
+  if (!render) return null
+
+  return (
+    <TableRow className="hover:bg-transparent">
+      <TableCell colSpan={colSpan} className="p-0 border-0">
+        <div
+          className={cn(
+            'grid transition-[grid-template-rows] duration-300 ease-out',
+            animating ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
+          )}
+        >
+          <div className="overflow-hidden">
+            {children}
+          </div>
+        </div>
+      </TableCell>
+    </TableRow>
   )
 }

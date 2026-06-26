@@ -15,14 +15,12 @@ export function RegionFilter({ regions, total, active, onChange }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Chip selected={active === null} onClick={() => onChange(null)}>
-        <span>全部</span>
-        <span className="text-[10px] opacity-70">{total}</span>
+        全部
       </Chip>
       {regions.map(r => (
         <Chip key={r.code} selected={active === r.code} onClick={() => onChange(r.code)}>
           <Flag code={r.code} className="w-4 h-3" />
           <span>{r.code}</span>
-          <span className="text-[10px] opacity-70">{r.count}</span>
         </Chip>
       ))}
     </div>
@@ -43,10 +41,10 @@ function Chip({
       type="button"
       onClick={onClick}
       className={cn(
-        'inline-flex items-center gap-1.5 px-2.5 py-1 text-xs rounded-full border transition-colors',
+        'inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs rounded transition-colors shrink-0 leading-none',
         selected
-          ? 'bg-primary text-primary-foreground border-primary'
-          : 'bg-card text-foreground/80 border-border hover:bg-accent',
+          ? 'bg-primary text-primary-foreground'
+          : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
       )}
     >
       {children}

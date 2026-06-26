@@ -1,0 +1,29 @@
+{
+  "name": "Traffic Manager",
+  "version": "1.0.0",
+  "description": "流量统计与计费管理",
+  "extension_version": 1,
+  "author": "NodeGet",
+  "worker": {
+    "filename": "worker.js",
+    "cron": "0 * * * * *"
+  },
+  "routes": [
+    {
+      "type": "global",
+      "name": "流量配置",
+      "entry": "index.html"
+    }
+  ],
+  "limits": [
+    {
+      "permissions": [
+        {"monitoring_uuid": "list"},
+        {"dynamic_monitoring_summary": "read"},
+        {"kv": {"read": "*"}},
+        {"kv": {"write": "*"}}
+      ],
+      "scopes": ["global"]
+    }
+  ]
+}

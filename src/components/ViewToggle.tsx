@@ -13,7 +13,7 @@ export function ViewToggle({ value, onChange }: { value: View; onChange: (v: Vie
 
   return (
     <div
-      className="relative inline-grid bg-muted p-1 rounded-md"
+      className="relative inline-grid p-1 rounded-md"
       style={{ gridTemplateColumns: `repeat(${ITEMS.length}, 1fr)` }}
     >
       <div
@@ -27,8 +27,7 @@ export function ViewToggle({ value, onChange }: { value: View; onChange: (v: Vie
       {ITEMS.map(({ value: v, label, icon: Icon }) => (
         <Btn key={v} active={value === v} onClick={() => onChange(v)}>
           <Icon className="h-3.5 w-3.5" />
-          <span className="hidden sm:inline">{label}</span>
-        </Btn>
+</Btn>
       ))}
     </div>
   )
@@ -48,7 +47,7 @@ function Btn({
       type="button"
       onClick={onClick}
       aria-pressed={active}
-      className={`relative z-10 inline-flex items-center justify-center gap-1.5 px-3 py-1 text-sm font-medium rounded-sm transition-colors ${
+      className={`relative z-10 inline-flex items-center justify-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1 text-sm font-medium rounded-sm transition-colors ${
         active ? 'text-foreground' : 'text-muted-foreground hover:text-foreground'
       }`}
     >

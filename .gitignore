@@ -149,3 +149,4 @@ public/config.json
 .idea
 nodeget-theme.dev.json
 nodeget-theme.dev.jsonc
+.gstack/

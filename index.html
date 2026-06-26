@@ -9,10 +9,10 @@
     <script>
       window.__config_p__ = fetch('config.json', { cache: 'no-cache' })
         .then(function(res) { return res.ok ? res.json() : Promise.reject(res.status) })
-        .catch(function(e) { console.warn('config.json prefetch failed:', e) })
+        .catch(function(e) { console.debug('config.json prefetch failed:', e) })
       window.__theme_p__ = fetch('nodeget-theme.json', { cache: 'no-cache' })
         .then(function(res) { return res.ok ? res.json() : Promise.reject(res.status) })
-        .catch(function(e) { console.warn('nodeget-theme.json prefetch failed:', e) })
+        .catch(function(e) { console.debug('nodeget-theme.json prefetch failed:', e) })
     </script>
     <script>
       try {
