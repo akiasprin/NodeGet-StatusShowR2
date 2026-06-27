@@ -95,9 +95,11 @@ async function initState(token, uuid, periodMs, currentBoot, liveRx, liveTx) {
       if (fallbackFrom < searchFrom) first = await firstOfBootInRange(token, uuid, fallbackFrom, c.endTs, c.boot)
     }
 
-    // 当前 boot：如果 period 窗口内确实没有数据（监控延迟等），用 live 值兜底，
-    // 宁可少算也不要 fallback 到 0 导致显示全部历史流量。
-    // 已关闭的 boot：找不到 first 时用 0 兜底，该 boot 的 deltaRx 全计入 adjust。
+    // 当前 boot：若 period 窗口内无数据点（监控延迟等），用 live 值兜底，
+    //   delta = end - end = 0，boot_start = live。修复旧版 fallback 0 导致
+    //   delta = live - 0 把全部历史流量算进周期内的 bug（少算偏差）。
+    // 已关闭 boot：若 period 窗口内无数据点，用 0 兜底，
+    //   delta = end - 0 = end，该 boot 全量计入 adjust（多算折中：宁多勿漏）。
     const frx = first ? first.rx : (isCurrent ? c.endRx : 0)
     const ftx = first ? first.tx : (isCurrent ? c.endTx : 0)
     const deltaRx = Math.max(0, c.endRx - frx)
