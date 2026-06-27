@@ -15,7 +15,7 @@ export function RegionFilter({ regions, total, active, onChange }: Props) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Chip selected={active === null} onClick={() => onChange(null)}>
-        全部
+        全球
       </Chip>
       {regions.map(r => (
         <Chip key={r.code} selected={active === r.code} onClick={() => onChange(r.code)}>
